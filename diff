@@ -1,0 +1,286 @@
+diff --git a/memtester-4.3.0/memtester.c b/memtester-4.3.0/memtester.c
+index 00a28ec..c3a0407 100644
+--- a/memtester-4.3.0/memtester.c
++++ b/memtester-4.3.0/memtester.c
+@@ -42,6 +42,12 @@ struct test tests[] = {
+     { "Compare OR", test_or_comparison },
+     { "Compare AND", test_and_comparison },
+     { "Sequential Increment", test_seqinc_comparison },
++    { "0xffffffffffffffff", test_fixed_pattern1 },
++    { "0xaaaaaaaaaaaaaaaa", test_fixed_pattern2 },
++    { "0xf0f0f0f0f0f0f0f0", test_fixed_pattern3 },
++    { "0xffffffff00000000", test_fixed_pattern4 },
++#if 0
++#endif
+ #ifdef TEST_NARROW_WRITES    
+     { "8-bit Writes", test_8bit_wide_random },
+     { "16-bit Writes", test_16bit_wide_random },
+diff --git a/memtester-4.3.0/tests.c b/memtester-4.3.0/tests.c
+index be1b350..a6fdf50 100644
+--- a/memtester-4.3.0/tests.c
++++ b/memtester-4.3.0/tests.c
+@@ -18,6 +18,10 @@
+ #include <stdlib.h>
+ #include <limits.h>
+ 
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <unistd.h>
+ #include "types.h"
+ #include "sizes.h"
+ #include "memtester.h"
+@@ -35,9 +39,66 @@ int compare_regions(ulv *bufa, ulv *bufb, size_t count) {
+     ulv *p1 = bufa;
+     ulv *p2 = bufb;
+     off_t physaddr;
++	int wr;
++	int j = 0;
++	int n = 0;
++
++    int fp = open("/proc/sysrq-trigger", O_WRONLY);
++	if(fp < 0)
++    	fprintf(stderr,"open error\n");
++    for (i = 0; i < count; i=i+2, p1++, p2++) {
++readbuf:  if (*p1 != *p2) {
++            if (use_phys) {
++                physaddr = physaddrbase + (i * sizeof(ul));
++                fprintf(stderr, 
++                        "FAILURE: 0x%08lx != 0x%08lx at physical address "
++                        "0x%08lx.\n", 
++                        (ul) *p1, (ul) *p2, physaddr);
++            } else {
++                fprintf(stderr, 
++                        "FAILURE: 0x%08lx != 0x%08lx at offset 0x%08lx. p1[%d]: 0x%08lx p1[%d]: 0x%08lx p2[%d]: 0x%08lx, p2[%d]: 0x%08lx\n", 
++                        (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)), i/2,p1[i/2],i/2+1, p1[i/2+1], i/2,p2[i/2],i/2+1, p2[i/2+1]);
++            }
++            /* printf("Skipping to next test..."); */
++            r = -1;
++			wr = write(fp, "a", 1);
++			if(wr < 0)
++                fprintf(stderr,"flush cache error\n");
++			if(n < 3){
++				n++;
++				goto readbuf;
++			}
++        }
++		if(3 == n){
++            fprintf(stderr,
++                    "+++++++++++++++++++++WRITE FAILURE: 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
++                    (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++			n = 0;
++		} else if(3 > n && n > 0) {
++            fprintf(stderr,
++                    "====================READ FAILURE: 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
++                    (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++			n = 0;
++		}
++    }
++    return r;
++}
++
++int compare_regions1(ulv q, ulv q1, ulv q2, ulv *bufa, ulv *bufb, size_t count) {
++    int r = 0;
++    size_t i;
++    ulv *p1 = bufa;
++    ulv *p2 = bufb;
++    off_t physaddr;
++	int wr;
++	int j = 0;
++	int n = 0;
+ 
++    int fp = open("/proc/sysrq-trigger", O_WRONLY);
++	if(fp < 0)
++    	fprintf(stderr,"open error\n");
+     for (i = 0; i < count; i++, p1++, p2++) {
+-        if (*p1 != *p2) {
++readbuf:  if (*p1 != *p2) {
+             if (use_phys) {
+                 physaddr = physaddrbase + (i * sizeof(ul));
+                 fprintf(stderr, 
+@@ -45,13 +106,37 @@ int compare_regions(ulv *bufa, ulv *bufb, size_t count) {
+                         "0x%08lx.\n", 
+                         (ul) *p1, (ul) *p2, physaddr);
+             } else {
++				if((i%2)==0){
+                 fprintf(stderr, 
+-                        "FAILURE: 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
+-                        (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++                        "FAILURE:correct val 0x%x 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
++                        q^q1, (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++				}else if((i%2)==1){
++                fprintf(stderr, 
++                        "FAILURE:correct val 0x%x 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
++                        q^q2, (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++				}
+             }
+             /* printf("Skipping to next test..."); */
+             r = -1;
++			wr = write(fp, "a", 1);
++			if(wr < 0)
++                fprintf(stderr,"flush cache error\n");
++			if(n < 3){
++				n++;
++				goto readbuf;
++			}
+         }
++		if(3 == n){
++            fprintf(stderr,
++                    "+++++++++++++++++++++WRITE FAILURE: 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
++                    (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++			n = 0;
++		} else if(3 > n && n > 0) {
++            fprintf(stderr,
++                    "====================READ FAILURE: 0x%08lx != 0x%08lx at offset 0x%08lx.\n", 
++                    (ul) *p1, (ul) *p2, (ul) (i * sizeof(ul)));
++			n = 0;
++		}
+     }
+     return r;
+ }
+@@ -110,8 +195,12 @@ int test_random_value(ulv *bufa, ulv *bufb, size_t count) {
+ 
+     putchar(' ');
+     fflush(stdout);
+-    for (i = 0; i < count; i++) {
++    for (i = 0; i < count; i=i+2) {
+         *p1++ = *p2++ = rand_ul();
++		*p1 = p1[i];
++		*p2 += p2[i];
++		p1++;
++		p2++;
+         if (!(i % PROGRESSOFTEN)) {
+             putchar('\b');
+             putchar(progress[++j % PROGRESSLEN]);
+@@ -129,10 +218,18 @@ int test_xor_comparison(ulv *bufa, ulv *bufb, size_t count) {
+     size_t i;
+     ul q = rand_ul();
+ 
+-    for (i = 0; i < count; i++) {
++	printf("test_xor_comparison count %d\n", count);
++    for (i = 0; i < count; i=i+2) {
+         *p1++ ^= q;
+         *p2++ ^= q;
+-    }
++		*p1 = p1[i];
++		*p2 += p2[i];
++		p1++;
++		p2++;
++	printf("test_xor_comparison i %d\n",i);
++		}
++	printf("test_xor_comparison *** %d\n", count);
++    fflush(stdout);
+     return compare_regions(bufa, bufb, count);
+ }
+ 
+@@ -142,9 +239,13 @@ int test_sub_comparison(ulv *bufa, ulv *bufb, size_t count) {
+     size_t i;
+     ul q = rand_ul();
+ 
+-    for (i = 0; i < count; i++) {
++    for (i = 0; i < count; i=i+2) {
+         *p1++ -= q;
+         *p2++ -= q;
++		*p1 = p1[i];
++		*p2 += p2[i];
++		p1++;
++		p2++;
+     }
+     return compare_regions(bufa, bufb, count);
+ }
+@@ -155,9 +256,13 @@ int test_mul_comparison(ulv *bufa, ulv *bufb, size_t count) {
+     size_t i;
+     ul q = rand_ul();
+ 
+-    for (i = 0; i < count; i++) {
++    for (i = 0; i < count; i=i+2) {
+         *p1++ *= q;
+         *p2++ *= q;
++		*p1 = p1[i];
++		*p2 += p2[i];
++		p1++;
++		p2++;
+     }
+     return compare_regions(bufa, bufb, count);
+ }
+@@ -168,16 +273,64 @@ int test_div_comparison(ulv *bufa, ulv *bufb, size_t count) {
+     size_t i;
+     ul q = rand_ul();
+ 
+-    for (i = 0; i < count; i++) {
++    for (i = 0; i < count; i=i+2) {
+         if (!q) {
+             q++;
+         }
+         *p1++ /= q;
+         *p2++ /= q;
++		*p1 = p1[i];
++		*p2 += p2[i];
++		p1++;
++		p2++;
+     }
+     return compare_regions(bufa, bufb, count);
+ }
+ 
++int test_fixed_pattern1(ulv *bufa, ulv *bufb, size_t count) {
++    ulv *p1 = bufa;
++    ulv *p2 = bufb;
++    size_t i;
++	int ret1,ret2,ret3,ret4,ret5;
++    for (i = 0; i < count; i++) {
++        *p1++ = 0xffffffffffffffff;
++        *p2++ = 0xffffffffffffffff;
++    }
++    return compare_regions(bufa, bufb, count);
++}
++int test_fixed_pattern2(ulv *bufa, ulv *bufb, size_t count) {
++    ulv *p1 = bufa;
++    ulv *p2 = bufb;
++    size_t i;
++	int ret1,ret2,ret3,ret4,ret5;
++    for (i = 0; i < count; i++) {
++        *p1++ = 0xaaaaaaaaaaaaaaaa;
++        *p2++ = 0xaaaaaaaaaaaaaaaa;
++    }
++    return compare_regions(bufa, bufb, count);
++}
++int test_fixed_pattern3(ulv *bufa, ulv *bufb, size_t count) {
++    ulv *p1 = bufa;
++    ulv *p2 = bufb;
++    size_t i;
++	int ret1,ret2,ret3,ret4,ret5;
++    for (i = 0; i < count; i++) {
++        *p1++ = 0xf0f0f0f0f0f0f0f0;
++        *p2++ = 0xf0f0f0f0f0f0f0f0;
++    }
++    return compare_regions(bufa, bufb, count);
++}
++int test_fixed_pattern4(ulv *bufa, ulv *bufb, size_t count) {
++    ulv *p1 = bufa;
++    ulv *p2 = bufb;
++    size_t i;
++	int ret1,ret2,ret3,ret4,ret5;
++    for (i = 0; i < count; i++) {
++        *p1++ = 0xf0f0f0f0f0f0f0f0;
++        *p2++ = 0xf0f0f0f0f0f0f0f0;
++    }
++    return compare_regions(bufa, bufb, count);
++}
+ int test_or_comparison(ulv *bufa, ulv *bufb, size_t count) {
+     ulv *p1 = bufa;
+     ulv *p2 = bufb;
+diff --git a/memtester-4.3.0/tests.h b/memtester-4.3.0/tests.h
+index eccd47c..c8f6262 100644
+--- a/memtester-4.3.0/tests.h
++++ b/memtester-4.3.0/tests.h
+@@ -32,6 +32,10 @@ int test_walkbits0_comparison(unsigned long volatile *bufa, unsigned long volati
+ int test_walkbits1_comparison(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
+ int test_bitspread_comparison(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
+ int test_bitflip_comparison(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
++int test_fixed_pattern1(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
++int test_fixed_pattern2(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
++int test_fixed_pattern3(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
++int test_fixed_pattern4(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
+ #ifdef TEST_NARROW_WRITES    
+ int test_8bit_wide_random(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);
+ int test_16bit_wide_random(unsigned long volatile *bufa, unsigned long volatile *bufb, size_t count);

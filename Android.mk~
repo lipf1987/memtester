@@ -1,0 +1,7 @@
+1 LOCAL_PATH := $(call my-dir)
+2 include $(CLEAR_VARS)
+3 LOCAL_SRC_FILES := memtester.c tests.c
+4 LOCAL_MODULE := memtester
+5 LOCAL_C_INCLUDES := $(LOCAL_PATH)
+6 #LOCAL_MODULE_PATH :=  output path of module!
+7 include $(BUILD_EXECUTABLE)
